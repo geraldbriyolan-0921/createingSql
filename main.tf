@@ -12,6 +12,10 @@ provider "google" {
   region  = var.region
 }
 
+
+# ---------------------
+# VPC Configuration
+# ---------------------
 resource "google_compute_network" "cloudcadi_vpc" {
   name                    = "cloudcadi"
   auto_create_subnetworks = false
@@ -39,6 +43,7 @@ resource "google_compute_subnetwork" "subnet2" {
   stack_type               = "IPV4_ONLY"
 }
 
+# Firewall Rules
 resource "google_compute_firewall" "allow_rdp" {
   name    = "allow-rdp"
   network = google_compute_network.cloudcadi_vpc.name
@@ -50,7 +55,7 @@ resource "google_compute_firewall" "allow_rdp" {
 
   direction     = "INGRESS"
   priority      = 65534
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = ["0.0.0.0/0"] # Modify for security
 }
 
 resource "google_compute_firewall" "allow_ssh" {
@@ -64,7 +69,7 @@ resource "google_compute_firewall" "allow_ssh" {
 
   direction     = "INGRESS"
   priority      = 65534
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = ["0.0.0.0/0"] # Modify for security
 }
 
 # Reserve a private IP range for Google services
@@ -72,7 +77,7 @@ resource "google_compute_global_address" "private_ip_alloc" {
   name          = "cloudcadi-private-ip"
   purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
-  prefix_length = 16
+  prefix_length = 24
   network       = google_compute_network.cloudcadi_vpc.id
 }
 
@@ -83,32 +88,11 @@ resource "google_service_networking_connection" "private_vpc_peering" {
   reserved_peering_ranges = [google_compute_global_address.private_ip_alloc.name]
 }
 
-# Output the VPC ID and Peering Connection ID
-output "vpc_id" {
-  value = google_compute_network.cloudcadi_vpc.id
-}
-
-output "private_vpc_peering_id" {
-  value = google_service_networking_connection.private_vpc_peering.id
-}
-
-variable "vpc_id" {
-  description = "VPC ID for Cloud SQL private network"
-}
-
-variable "private_vpc_peering_id" {
-  description = "ID of the private VPC peering connection"
-}
-
+# ---------------------
+# Cloud SQL Configuration
+# ---------------------
 resource "google_sql_database_instance" "clouddb" {
-  depends_on = [
-    google_compute_network.cloudcadi_vpc,
-    google_compute_subnetwork.subnet1,
-    google_compute_subnetwork.subnet2,
-    google_compute_global_address.private_ip_alloc,
-    google_service_networking_connection.private_vpc_peering
-  ]
-
+  depends_on       = [google_service_networking_connection.private_vpc_peering] 
   name             = "clouddb"
   database_version = "POSTGRES_14"
   region           = "us-central1"
@@ -125,7 +109,7 @@ resource "google_sql_database_instance" "clouddb" {
 
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.cloudcadi_vpc.id # Directly reference the VPC ID
+      private_network = google_compute_network.cloudcadi_vpc.id
     }
 
     maintenance_window {
@@ -137,13 +121,24 @@ resource "google_sql_database_instance" "clouddb" {
   deletion_protection = true
 }
 
-
 # Create a Cloud SQL User
 resource "google_sql_user" "default" {
   name     = "postgres"
   instance = google_sql_database_instance.clouddb.name
   password = "Qwerty@123"
 }
+
+# ---------------------
+# Outputs
+# ---------------------
+output "vpc_id" {
+  value = google_compute_network.cloudcadi_vpc.id
+}
+
+output "private_vpc_peering_id" {
+  value = google_service_networking_connection.private_vpc_peering.id
+}
+
 
 variable "project_id" {}
 variable "region" {}
