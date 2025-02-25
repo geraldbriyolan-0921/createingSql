@@ -11,6 +11,7 @@ provider "google" {
   project = var.project_id
   region  = var.region
 }
+
 resource "google_compute_network" "cloudcadi_vpc" {
   name                    = "cloudcadi"
   auto_create_subnetworks = false
@@ -24,7 +25,7 @@ resource "google_compute_subnetwork" "subnet1" {
   network                  = google_compute_network.cloudcadi_vpc.id
   region                   = "us-central1"
   ip_cidr_range            = "10.0.0.0/24"
-  private_ip_google_access = true # Required for private services
+  private_ip_google_access = true
   stack_type               = "IPV4_ONLY"
 }
 
@@ -34,7 +35,7 @@ resource "google_compute_subnetwork" "subnet2" {
   network                  = google_compute_network.cloudcadi_vpc.id
   region                   = "us-central1"
   ip_cidr_range            = "10.0.1.0/24"
-  private_ip_google_access = true # Required for private services
+  private_ip_google_access = true
   stack_type               = "IPV4_ONLY"
 }
 
@@ -49,7 +50,7 @@ resource "google_compute_firewall" "allow_rdp" {
 
   direction     = "INGRESS"
   priority      = 65534
-  source_ranges = ["0.0.0.0/0"] # Modify for security
+  source_ranges = ["0.0.0.0/0"]
 }
 
 resource "google_compute_firewall" "allow_ssh" {
@@ -63,7 +64,7 @@ resource "google_compute_firewall" "allow_ssh" {
 
   direction     = "INGRESS"
   priority      = 65534
-  source_ranges = ["0.0.0.0/0"] # Modify for security
+  source_ranges = ["0.0.0.0/0"]
 }
 
 # Reserve a private IP range for Google services
@@ -100,7 +101,14 @@ variable "private_vpc_peering_id" {
 }
 
 resource "google_sql_database_instance" "clouddb" {
-  depends_on       = [var.private_vpc_peering_id] # Correctly using the variable
+  depends_on = [
+    google_compute_network.cloudcadi_vpc,
+    google_compute_subnetwork.subnet1,
+    google_compute_subnetwork.subnet2,
+    google_compute_global_address.private_ip_alloc,
+    google_service_networking_connection.private_vpc_peering
+  ]
+
   name             = "clouddb"
   database_version = "POSTGRES_14"
   region           = "us-central1"
@@ -117,7 +125,7 @@ resource "google_sql_database_instance" "clouddb" {
 
     ip_configuration {
       ipv4_enabled    = false
-      private_network = var.vpc_id # Correctly referencing the VPC
+      private_network = google_compute_network.cloudcadi_vpc.id
     }
 
     maintenance_window {
