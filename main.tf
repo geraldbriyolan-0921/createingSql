@@ -7,11 +7,10 @@ terraform {
   }
 }
 
-# provider "google" {
-#   project = "amadis-gcp"
-#   region  = "us-central1"
-# }
-
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
 resource "google_compute_network" "cloudcadi_vpc" {
   name                    = "cloudcadi"
   auto_create_subnetworks = false
@@ -136,3 +135,6 @@ resource "google_sql_user" "default" {
   instance = google_sql_database_instance.clouddb.name
   password = "Qwerty@123"
 }
+
+variable "project_id" {}
+variable "region" {}
