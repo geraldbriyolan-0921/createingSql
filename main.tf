@@ -12,10 +12,10 @@ provider "google" {
   region  = var.region
 }
 
+# ---------------------
+# VPC NETWORK & SUBNETS
+# ---------------------
 
-# ---------------------
-# VPC Configuration
-# ---------------------
 resource "google_compute_network" "cloudcadi_vpc" {
   name                    = "cloudcadi"
   auto_create_subnetworks = false
@@ -23,7 +23,6 @@ resource "google_compute_network" "cloudcadi_vpc" {
   routing_mode            = "REGIONAL"
 }
 
-# Create Subnet 1
 resource "google_compute_subnetwork" "subnet1" {
   name                     = "subnet-1"
   network                  = google_compute_network.cloudcadi_vpc.id
@@ -33,7 +32,6 @@ resource "google_compute_subnetwork" "subnet1" {
   stack_type               = "IPV4_ONLY"
 }
 
-# Create Subnet 2
 resource "google_compute_subnetwork" "subnet2" {
   name                     = "subnet-2"
   network                  = google_compute_network.cloudcadi_vpc.id
@@ -43,7 +41,10 @@ resource "google_compute_subnetwork" "subnet2" {
   stack_type               = "IPV4_ONLY"
 }
 
-# Firewall Rules
+# ---------------------
+# FIREWALL RULES
+# ---------------------
+
 resource "google_compute_firewall" "allow_rdp" {
   name    = "allow-rdp"
   network = google_compute_network.cloudcadi_vpc.name
@@ -72,7 +73,10 @@ resource "google_compute_firewall" "allow_ssh" {
   source_ranges = ["0.0.0.0/0"] # Modify for security
 }
 
-# Reserve a private IP range for Google services
+# ---------------------
+# VPC PEERING
+# ---------------------
+
 resource "google_compute_global_address" "private_ip_alloc" {
   name          = "cloudcadi-private-ip"
   purpose       = "VPC_PEERING"
@@ -81,7 +85,6 @@ resource "google_compute_global_address" "private_ip_alloc" {
   network       = google_compute_network.cloudcadi_vpc.id
 }
 
-# Create a private service connection for Google-managed services
 resource "google_service_networking_connection" "private_vpc_peering" {
   network                 = google_compute_network.cloudcadi_vpc.id
   service                 = "servicenetworking.googleapis.com"
@@ -89,10 +92,11 @@ resource "google_service_networking_connection" "private_vpc_peering" {
 }
 
 # ---------------------
-# Cloud SQL Configuration
+# CLOUD SQL POSTGRES INSTANCE
 # ---------------------
+
 resource "google_sql_database_instance" "clouddb" {
-  depends_on       = [google_service_networking_connection.private_vpc_peering] 
+  depends_on       = [google_service_networking_connection.private_vpc_peering]
   name             = "clouddb"
   database_version = "POSTGRES_14"
   region           = "us-central1"
@@ -121,7 +125,7 @@ resource "google_sql_database_instance" "clouddb" {
   deletion_protection = true
 }
 
-# Create a Cloud SQL User
+# SQL User
 resource "google_sql_user" "default" {
   name     = "postgres"
   instance = google_sql_database_instance.clouddb.name
@@ -129,14 +133,91 @@ resource "google_sql_user" "default" {
 }
 
 # ---------------------
-# Outputs
+# COMPUTE ENGINE VM
 # ---------------------
+
+resource "google_compute_instance" "vm_instance" {
+  name         = "instance-20250225-064515"
+  machine_type = "n4-highcpu-8"
+  zone         = "us-central1-a"
+
+  boot_disk {
+    auto_delete = true
+    device_name = "instance-20250225-064515"
+
+    initialize_params {
+      image = "projects/debian-cloud/global/images/debian-12-bookworm-v20250212"
+      size  = 20
+      type  = "hyperdisk-balanced"
+    }
+
+    mode = "READ_WRITE"
+  }
+
+  can_ip_forward      = false
+  deletion_protection = false
+  enable_display      = false
+
+  labels = {
+    goog-ec-src = "vm_add-tf"
+  }
+
+  network_interface {
+    subnetwork = google_compute_subnetwork.subnet1.id
+
+    access_config {
+      network_tier = "PREMIUM"
+    }
+
+    nic_type    = "GVNIC"
+    queue_count = 0
+    stack_type  = "IPV4_ONLY"
+  }
+
+  scheduling {
+    automatic_restart   = true
+    on_host_maintenance = "MIGRATE"
+    preemptible         = false
+    provisioning_model  = "STANDARD"
+  }
+
+  service_account {
+    email  = "niveshs@amadis-gcp.iam.gserviceaccount.com"
+    scopes = [
+      "https://www.googleapis.com/auth/devstorage.read_only",
+      "https://www.googleapis.com/auth/logging.write",
+      "https://www.googleapis.com/auth/monitoring.write",
+      "https://www.googleapis.com/auth/service.management.readonly",
+      "https://www.googleapis.com/auth/servicecontrol",
+      "https://www.googleapis.com/auth/trace.append"
+    ]
+  }
+
+  shielded_instance_config {
+    enable_integrity_monitoring = true
+    enable_secure_boot          = false
+    enable_vtpm                 = true
+  }
+}
+
+# ---------------------
+# OUTPUTS
+# ---------------------
+
 output "vpc_id" {
   value = google_compute_network.cloudcadi_vpc.id
 }
 
 output "private_vpc_peering_id" {
   value = google_service_networking_connection.private_vpc_peering.id
+}
+
+output "sql_instance_name" {
+  value = google_sql_database_instance.clouddb.name
+}
+
+output "vm_name" {
+  value = google_compute_instance.vm_instance.name
 }
 
 
