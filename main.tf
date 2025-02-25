@@ -125,7 +125,7 @@ resource "google_sql_database_instance" "clouddb" {
 
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.cloudcadi_vpc.id
+      private_network = google_compute_network.cloudcadi_vpc.id # Directly reference the VPC ID
     }
 
     maintenance_window {
@@ -136,6 +136,7 @@ resource "google_sql_database_instance" "clouddb" {
 
   deletion_protection = true
 }
+
 
 # Create a Cloud SQL User
 resource "google_sql_user" "default" {
